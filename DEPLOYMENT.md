@@ -34,7 +34,7 @@ https://[your-username].github.io/thiings-grid/
 ## Local Development vs Production
 
 - **Local Development**: Run `npm run dev` - uses base path `/`
-- **Production Build**: Run `npm run build` - uses base path `/thiings-grid/`
+- **Production Build**: Run `npm run build` - uses base path `/`
 
 ## Workflow Details
 

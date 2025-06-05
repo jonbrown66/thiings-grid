@@ -6,7 +6,7 @@ A high-performance, infinite scrolling grid component for React that provides sm
 
 > This is the component that powers the interactive grid on [thiings.co](https://thiings.co/) - A growing collection of 1200+ free 3D icons, generated with AI.
 
-## 🎮 [**Try the Live Playground →**](https://charlieclark.github.io/thiings-grid)
+## 🎮 [**Try the Live Playground →**](https://grid.thiings.co)
 
 > Experience ThiingsGrid in action with interactive examples and copy-paste ready code.
 
