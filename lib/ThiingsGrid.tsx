@@ -156,6 +156,18 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
   componentDidMount() {
     this.isComponentMounted = true;
     this.updateGridItems();
+
+    // Add non-passive event listener
+    if (this.containerRef.current) {
+      this.containerRef.current.addEventListener("wheel", this.handleWheel, {
+        passive: false,
+      });
+      this.containerRef.current.addEventListener(
+        "touchmove",
+        this.handleTouchMove,
+        { passive: false }
+      );
+    }
   }
 
   componentWillUnmount() {
@@ -164,6 +176,15 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
       cancelAnimationFrame(this.animationFrame);
     }
     this.debouncedUpdateGridItems.cancel();
+
+    // Remove event listeners
+    if (this.containerRef.current) {
+      this.containerRef.current.removeEventListener("wheel", this.handleWheel);
+      this.containerRef.current.removeEventListener(
+        "touchmove",
+        this.handleTouchMove
+      );
+    }
   }
 
   public publicGetCurrentPosition = () => {
@@ -178,12 +199,12 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
     const height = rect.height;
 
     // Calculate grid cells needed to fill container
-    const cellsX = Math.ceil(width / this.props.gridSize!);
-    const cellsY = Math.ceil(height / this.props.gridSize!);
+    const cellsX = Math.ceil(width / this.props.gridSize);
+    const cellsY = Math.ceil(height / this.props.gridSize);
 
     // Calculate center position based on offset
-    const centerX = -Math.round(this.state.offset.x / this.props.gridSize!);
-    const centerY = -Math.round(this.state.offset.y / this.props.gridSize!);
+    const centerX = -Math.round(this.state.offset.x / this.props.gridSize);
+    const centerY = -Math.round(this.state.offset.y / this.props.gridSize);
 
     const positions: Position[] = [];
     const halfCellsX = Math.ceil(cellsX / 2);
@@ -395,11 +416,12 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
     });
   };
 
-  private handleTouchMove = (e: React.TouchEvent) => {
+  private handleTouchMove = (e: TouchEvent) => {
     const touch = e.touches[0];
 
     if (!touch) return;
 
+    e.preventDefault();
     this.handleMove({
       x: touch.clientX,
       y: touch.clientY,
@@ -410,7 +432,9 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
     this.handleUp();
   };
 
-  private handleWheel = (e: React.WheelEvent) => {
+  private handleWheel = (e: WheelEvent) => {
+    e.preventDefault();
+
     // Get the scroll deltas
     const deltaX = e.deltaX;
     const deltaY = e.deltaY;
@@ -452,10 +476,8 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
         onMouseUp={this.handleMouseUp}
         onMouseLeave={this.handleMouseUp}
         onTouchStart={this.handleTouchStart}
-        onTouchMove={this.handleTouchMove}
         onTouchEnd={this.handleTouchEnd}
         onTouchCancel={this.handleTouchEnd}
-        onWheel={this.handleWheel}
       >
         <div
           style={{
@@ -466,8 +488,8 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
           }}
         >
           {gridItems.map((item) => {
-            const x = item.position.x * gridSize! + containerWidth / 2;
-            const y = item.position.y * gridSize! + containerHeight / 2;
+            const x = item.position.x * gridSize + containerWidth / 2;
+            const y = item.position.y * gridSize + containerHeight / 2;
 
             return (
               <div
@@ -481,8 +503,8 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
                   width: gridSize,
                   height: gridSize,
                   transform: `translate3d(${x}px, ${y}px, 0)`,
-                  marginLeft: `-${gridSize! / 2}px`,
-                  marginTop: `-${gridSize! / 2}px`,
+                  marginLeft: `-${gridSize / 2}px`,
+                  marginTop: `-${gridSize / 2}px`,
                   willChange: "transform",
                 }}
               >
