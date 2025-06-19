@@ -1,6 +1,6 @@
-import React, { useState } from 'react'; // Import useState
+import { useState } from 'react'; // Import useState
 import ThiingsGrid, { type ItemConfig } from "../../lib/ThiingsGrid";
-import { type IconData } from "../iconData";
+import { type IconData } from "../iconData"; // Import IconData type
 
 interface ThiingsIconsProps {
   icons: IconData[];
@@ -40,7 +40,7 @@ const ThiingsIconCell = ({ gridIndex, icons, onIconClick, isMoving }: ThiingsIco
   );
 };
 
-export const ThiingsIcons = ({ icons, onIconClick }: ThiingsIconsProps) => {
+export const ThiingsIcons = ({ icons, onIconClick }: ThiingsIconsProps) => { // Re-add props
   if (icons.length === 0) {
     return (
       <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-lg">
@@ -52,7 +52,7 @@ export const ThiingsIcons = ({ icons, onIconClick }: ThiingsIconsProps) => {
   return (
     <ThiingsGrid
       gridSize={160}
-      renderItem={(config) => <ThiingsIconCell {...config} icons={icons} onIconClick={onIconClick} />}
+      renderItem={(config) => <ThiingsIconCell {...config} icons={icons} onIconClick={onIconClick} />} // Use props
       initialPosition={{ x: 0, y: 0 }}
     />
   );

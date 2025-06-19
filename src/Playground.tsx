@@ -1,17 +1,14 @@
-import ThiingsIconsExample from "./examples/ThiingsIcons";
 import SimpleNumbersExample from "./examples/SimpleNumbers";
 import ColorfulGridExample from "./examples/ColorfulGrid";
 import EmojiFunExample from "./examples/EmojiFun";
 import CardLayoutExample from "./examples/CardLayout";
 
-import thiingsIconsSource from "./examples/ThiingsIcons.tsx?raw";
 import simpleNumbersSource from "./examples/SimpleNumbers.tsx?raw";
 import colorfulGridSource from "./examples/ColorfulGrid.tsx?raw";
 import emojiFunSource from "./examples/EmojiFun.tsx?raw";
 import cardLayoutSource from "./examples/CardLayout.tsx?raw";
 
 export const exampleComponents = [
-  ThiingsIconsExample,
   SimpleNumbersExample,
   EmojiFunExample,
   ColorfulGridExample,
@@ -19,7 +16,6 @@ export const exampleComponents = [
 ];
 
 export const sourceCodes = [
-  thiingsIconsSource,
   simpleNumbersSource,
   emojiFunSource,
   colorfulGridSource,

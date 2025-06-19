@@ -7,7 +7,6 @@ import iconData from "./iconData";
 function App() {
   const [selectedIconIndex, setSelectedIconIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const handleIconClick = (index: number) => {
     setSelectedIconIndex(index);
@@ -62,8 +61,6 @@ function App() {
             className="w-full p-3 rounded-full bg-black bg-opacity-30 backdrop-blur-sm border border-gray-700 focus:outline-none text-white text-center placeholder-gray-300"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
           />
         </div>
       </main>
