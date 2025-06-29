@@ -85,7 +85,7 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
             backgroundColor: '#ffffff',
             useCORS: true,
             scale: window.devicePixelRatio || 2,
-            ignoreElements: (element) => {
+            ignoreElements: () => {
               // Optionally ignore elements that might cause issues, e.g., iframes or complex SVGs
               // return element.tagName === 'IFRAME' || element.tagName === 'SVG';
               return false; // For now, don't ignore any specific elements
