@@ -14,7 +14,7 @@ interface ThiingsIconCellProps extends ItemConfig {
 
 const ThiingsIconCell = ({ gridIndex, icon, onIconClick, isMoving }: ThiingsIconCellProps) => {
   const [imageLoaded, setImageLoaded] = useState(false);
-  const imageUrl = `https://sokala.xyz/webp/${icon.filename}`;
+const imageUrl = `https://pub-3eaacd7f361f489abc8c1264f34670cd.r2.dev/webp/${icon.filename}`;
 
   return (
     <div className="absolute inset-1 flex items-center justify-center overflow-hidden">

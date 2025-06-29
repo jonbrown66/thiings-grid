@@ -40,8 +40,8 @@ function App() {
 
   const getIconDetails = (index: number) => {
     const icon: IconData = filteredIconData[index % filteredIconData.length];
-    const displayImageUrl = `https://sokala.xyz/webp/${icon.filename}`; // For displaying webp
-    const downloadImageUrl = `https://sokala.xyz/${icon.filename.replace('.webp', '.png')}`; // For downloading png
+    const displayImageUrl = `https://pub-3eaacd7f361f489abc8c1264f34670cd.r2.dev/webp/${icon.filename}`; // For displaying webp
+    const downloadImageUrl = `https://pub-3eaacd7f361f489abc8c1264f34670cd.r2.dev/${icon.filename.replace('.webp', '.png')}`; // For downloading png
     const description = icon.description;
     const title = icon.title;
     // Combine all tags into a single string for display if needed, or handle them separately
