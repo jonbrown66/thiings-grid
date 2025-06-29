@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.12",
     "html2canvas": "^1.0.0",
+    "plaiceholder": "^3.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-hot-toast": "^2.5.2",
     "sonner": "^2.0.5"
   },
   "devDependencies": {

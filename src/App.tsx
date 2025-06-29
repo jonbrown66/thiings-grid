@@ -1,12 +1,21 @@
-import { useState, useMemo } from "react";
-import { Toaster } from "sonner";
+import { useState, useEffect, useMemo } from "react";
+import { Toaster } from "react-hot-toast";
 import { ThiingsIcons } from "./examples/ThiingsIcons";
 import IconDetailCard from "./components/IconDetailCard";
-import iconData from "./iconData";
+import { fetchIconData, type IconData } from "./iconData";
 
 function App() {
   const [selectedIconIndex, setSelectedIconIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [iconData, setIconData] = useState<IconData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchIconData().then(data => {
+      setIconData(data);
+      setLoading(false);
+    });
+  }, []);
 
   const handleIconClick = (index: number) => {
     setSelectedIconIndex(index);
@@ -20,24 +29,35 @@ function App() {
     if (!searchQuery) {
       return iconData;
     }
-    return iconData.filter(icon =>
-      icon.description.toLowerCase().includes(searchQuery.toLowerCase())
+    return iconData.filter((icon: IconData) =>
+      icon.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      icon.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (icon.tag1 && icon.tag1.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (icon.tag2 && icon.tag2.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (icon.tag3 && icon.tag3.toLowerCase().includes(searchQuery.toLowerCase()))
     );
-  }, [searchQuery]);
+  }, [searchQuery, iconData]);
 
   const getIconDetails = (index: number) => {
-
-    const originalIndex = iconData.findIndex(icon => icon.filename === filteredIconData[index % filteredIconData.length].filename);
-    const icon = iconData[originalIndex !== -1 ? originalIndex : index % iconData.length];
-
-    const imageUrl = `/thiings/${icon.filename}`;
+    const icon: IconData = filteredIconData[index % filteredIconData.length];
+    const displayImageUrl = `https://sokala.xyz/webp/${icon.filename}`; // For displaying webp
+    const downloadImageUrl = `https://sokala.xyz/${icon.filename.replace('.webp', '.png')}`; // For downloading png
     const description = icon.description;
     const title = icon.title;
-    const tag = icon.tag;
-    return { imageUrl, description, title, tag };
+    // Combine all tags into a single string for display if needed, or handle them separately
+    const tag = [icon.tag1, icon.tag2, icon.tag3].filter(Boolean).join(', ');
+    return { imageUrl: displayImageUrl, downloadImageUrl, description, title, tag };
   };
 
   const iconDetails = selectedIconIndex !== null ? getIconDetails(selectedIconIndex) : null;
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center font-sans text-white">
+        加载数据中...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen font-sans">
@@ -47,6 +67,7 @@ function App() {
           {selectedIconIndex !== null && iconDetails && (
             <IconDetailCard
               imageUrl={iconDetails.imageUrl}
+              downloadImageUrl={iconDetails.downloadImageUrl} // Pass the new prop
               description={iconDetails.description}
               title={iconDetails.title}
               tag={iconDetails.tag}
@@ -64,7 +85,7 @@ function App() {
           />
         </div>
       </main>
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" />
     </div>
   );
 }

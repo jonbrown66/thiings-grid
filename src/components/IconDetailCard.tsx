@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
+import toast from 'react-hot-toast';
 
 interface IconDetailCardProps {
   imageUrl: string;
+  downloadImageUrl: string; // Add this new prop for download
   description: string;
   title: string;
   tag: string;
@@ -11,6 +13,7 @@ interface IconDetailCardProps {
 
 const IconDetailCard: React.FC<IconDetailCardProps> = ({
   imageUrl,
+  downloadImageUrl, // Destructure the new prop
   description,
   title,
   tag,
@@ -29,40 +32,89 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
   const handleDownloadCard = async () => {
     if (!cardRef.current) return;
 
-    const original = cardRef.current;
-    const clone = original.cloneNode(true) as HTMLElement;
+    const downloadPromise = new Promise<void>(async (resolve, reject) => {
+    const original = cardRef.current!;
+      const clone = original.cloneNode(true) as HTMLElement;
 
-    // 移除 clone 中的按钮和关闭元素
-    const buttons = clone.querySelectorAll('button');
-    buttons.forEach((btn) => btn.remove());
+      // 移除 clone 中的按钮和关闭元素
+      const buttons = clone.querySelectorAll('button');
+      buttons.forEach((btn) => btn.remove());
 
-    // 设置统一样式防止字体偏移
-    clone.style.fontFamily = 'Arial, sans-serif';
-    clone.querySelectorAll('*').forEach((el) => {
-      (el as HTMLElement).style.lineHeight = '1.2';
-      (el as HTMLElement).style.verticalAlign = 'middle';
-      (el as HTMLElement).style.fontFamily = 'Arial, sans-serif';
+      // 移除可能影响渲染的 transform 样式
+      clone.style.transform = 'none';
+      clone.style.transition = 'none';
+      clone.querySelectorAll('*').forEach((el) => {
+        (el as HTMLElement).style.transform = 'none';
+        (el as HTMLElement).style.transition = 'none';
+      });
+
+      // 设置统一样式防止字体偏移
+      clone.style.fontFamily = 'Arial, sans-serif';
+      clone.querySelectorAll('*').forEach((el) => {
+        (el as HTMLElement).style.lineHeight = '1.2';
+        (el as HTMLElement).style.verticalAlign = 'middle';
+        (el as HTMLElement).style.fontFamily = 'Arial, sans-serif';
+      });
+
+      // 等待图片加载完成
+      const imgElement = clone.querySelector('img');
+      if (imgElement) {
+        try {
+          // 关键步骤：为图片设置 crossOrigin 属性
+          imgElement.crossOrigin = 'anonymous';
+
+          // 使用 downloadImageUrl 来确保获取的是最高质量的图片
+          // 并且给它一个时间戳来防止浏览器缓存问题
+          imgElement.src = `${downloadImageUrl}?t=${new Date().getTime()}`;
+          if (imgElement && !imgElement.complete) {
+            await new Promise<void>((res, rej) => {
+              imgElement.onload = () => res();
+              imgElement.onerror = (e) => {
+                console.error("Image failed to load for html2canvas:", e);
+                rej(new Error("Image load failed"));
+              };
+            });
+          }
+
+          // 加入页面临时渲染
+          clone.style.position = 'absolute';
+          clone.style.left = '-9999px';
+          document.body.appendChild(clone);
+
+          const canvas = await html2canvas(clone, {
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            scale: window.devicePixelRatio || 2,
+            ignoreElements: (element) => {
+              // Optionally ignore elements that might cause issues, e.g., iframes or complex SVGs
+              // return element.tagName === 'IFRAME' || element.tagName === 'SVG';
+              return false; // For now, don't ignore any specific elements
+            },
+          });
+
+          document.body.removeChild(clone);
+
+          const link = document.createElement('a');
+          link.href = canvas.toDataURL('image/png');
+          link.download = `card-${Date.now()}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          resolve();
+        } catch (error) {
+          console.error("Failed to download card:", error);
+          reject(error);
+        }
+      } else {
+        reject(new Error("Image element not found for card download."));
+      }
     });
 
-    // 加入页面临时渲染
-    clone.style.position = 'absolute';
-    clone.style.left = '-9999px';
-    document.body.appendChild(clone);
-
-    const canvas = await html2canvas(clone, {
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      scale: window.devicePixelRatio || 2,
+    toast.promise(downloadPromise, {
+      loading: '卡片下载中...',
+      success: '卡片下载成功！',
+      error: '卡片下载失败。请稍后再试。',
     });
-
-    document.body.removeChild(clone);
-
-    const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
-    link.download = `card-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   return (
@@ -76,7 +128,7 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
         className={`bg-white rounded-lg p-6 max-w-sm mx-auto relative transform transition-transform duration-300 ease-out ${
           isVisible ? 'scale-100' : 'scale-0'
         }`}
-        style={{ fontFamily: 'Arial, sans-serif' }}
+        style={{ fontFamily: 'Arial, sans-serif'}}
       >
         {/* Close Button */}
         <button
@@ -107,7 +159,7 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
         </h2>
 
         {/* Image */}
-        <img src={imageUrl} alt="Icon" className="w-full h-auto mb-4" />
+        <img src={imageUrl} alt="Icon" className="w-full h-auto mb-4" loading="lazy" />
 
         {/* Description */}
         <p
@@ -120,13 +172,34 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
         {/* Buttons */}
         <button
           className="w-full bg-[#323130] text-white font-bold py-2 px-4 rounded mb-2"
-          onClick={() => {
-            const link = document.createElement('a');
-            link.href = imageUrl;
-            link.download = imageUrl.split('/').pop() || 'download';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+          onClick={async () => {
+            const downloadPromise = new Promise<void>(async (resolve, reject) => {
+              try {
+                const response = await fetch(downloadImageUrl);
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = downloadImageUrl.split('/').pop() || 'download';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url); // Clean up the object URL
+                resolve();
+              } catch (error) {
+                console.error("Failed to download image:", error);
+                reject(error);
+              }
+            });
+
+            toast.promise(downloadPromise, {
+              loading: '图片下载中...',
+              success: '图片下载成功！',
+              error: '图片下载失败。请稍后再试。',
+            });
           }}
         >
           Download Image

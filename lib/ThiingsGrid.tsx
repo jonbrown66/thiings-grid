@@ -97,10 +97,11 @@ type State = {
   startPos: Position;
   restPos: Position;
   velocity: Position;
-  gridItems: GridItem[];
   isMoving: boolean;
   lastMoveTime: number;
   velocityHistory: Position[];
+  renderedItems: Map<string, GridItem>; // Map to store currently rendered items for reuse
+  dragStartPos: Position; // Add dragStartPos to track where drag started
 };
 
 export type ItemConfig = {
@@ -133,10 +134,11 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
       startPos: { ...offset },
       velocity: { x: 0, y: 0 },
       isDragging: false,
-      gridItems: [],
       isMoving: false,
       lastMoveTime: 0,
       velocityHistory: [],
+      renderedItems: new Map(), // Initialize renderedItems
+      dragStartPos: { x: 0, y: 0 }, // Initialize dragStartPos
     };
     this.containerRef = React.createRef();
     this.lastPos = { x: 0, y: 0 };
@@ -264,17 +266,33 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
     if (!this.isComponentMounted) return;
 
     const positions = this.calculateVisiblePositions();
-    const newItems = positions.map((position) => {
-      const gridIndex = this.getItemIndexForPosition(position.x, position.y);
-      return {
-        position,
-        gridIndex,
-      };
+    const newVisibleItems = new Map<string, GridItem>();
+    const currentRenderedItems = new Map(this.state.renderedItems); // Create a mutable copy
+
+    positions.forEach((position) => {
+      const key = `${position.x}-${position.y}`;
+      let item = currentRenderedItems.get(key);
+
+      if (item) {
+        // Item already exists, reuse it
+        newVisibleItems.set(key, item);
+        currentRenderedItems.delete(key); // Mark as processed
+      } else {
+        // New item, create it
+        const gridIndex = this.getItemIndexForPosition(position.x, position.y);
+        newVisibleItems.set(key, { position, gridIndex });
+      }
     });
+
+    // Any remaining items in currentRenderedItems are no longer visible, remove them
+    // (No explicit removal needed from the Map, as we're setting a new Map)
 
     const distanceFromRest = getDistance(this.state.offset, this.state.restPos);
 
-    this.setState({ gridItems: newItems, isMoving: distanceFromRest > 5 });
+    this.setState({
+      renderedItems: newVisibleItems, // Update with new visible items
+      isMoving: distanceFromRest > 5
+    });
 
     this.debouncedStopMoving();
   };
@@ -335,6 +353,7 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
         y: p.y - this.state.offset.y,
       },
       velocity: { x: 0, y: 0 },
+      dragStartPos: { x: p.x, y: p.y }, // Record drag start position
     });
 
     this.lastPos = { x: p.x, y: p.y };
@@ -382,8 +401,19 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
     this.lastPos = { x: p.x, y: p.y };
   };
   private handleUp = () => {
+    const dragThreshold = 5; // pixels
+    const dragDistance = getDistance(this.state.dragStartPos, this.lastPos);
+
     this.setState({ isDragging: false });
-    this.animationFrame = requestAnimationFrame(this.animate);
+
+    if (dragDistance < dragThreshold) {
+      // This was a click, not a drag
+      // Ensure isMoving is false immediately for clicks
+      this.setState({ isMoving: false });
+    } else {
+      // This was a drag, start animation
+      this.animationFrame = requestAnimationFrame(this.animate);
+    }
   };
 
   private handleMouseDown = (e: React.MouseEvent) => {
@@ -452,7 +482,7 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
   };
 
   render() {
-    const { offset, isDragging, gridItems, isMoving } = this.state;
+    const { offset, isDragging, renderedItems, isMoving } = this.state;
     const { gridSize, className } = this.props;
 
     // Get container dimensions
@@ -487,13 +517,13 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
             willChange: "transform",
           }}
         >
-          {gridItems.map((item) => {
+          {Array.from(renderedItems.values()).map((item) => { // Iterate over values of the Map
             const x = item.position.x * gridSize + containerWidth / 2;
             const y = item.position.y * gridSize + containerHeight / 2;
 
             return (
               <div
-                key={`${item.position.x}-${item.position.y}`}
+                key={`${item.position.x}-${item.position.y}`} // Use a stable key
                 style={{
                   position: "absolute",
                   display: "flex",

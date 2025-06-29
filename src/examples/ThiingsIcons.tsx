@@ -8,33 +8,36 @@ interface ThiingsIconsProps {
 }
 
 interface ThiingsIconCellProps extends ItemConfig {
-  icons: IconData[];
+  icon: IconData; // Pass individual icon data
   onIconClick: (index: number) => void;
-  isMoving: boolean; // Add isMoving prop
 }
 
-const ThiingsIconCell = ({ gridIndex, icons, onIconClick, isMoving }: ThiingsIconCellProps) => {
-  const [hasAnimated, setHasAnimated] = useState(false); // Add state to track animation
-  const icon = icons[gridIndex % icons.length];
-  const imageUrl = `/thiings/${icon.filename}`;
+const ThiingsIconCell = ({ gridIndex, icon, onIconClick, isMoving }: ThiingsIconCellProps) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imageUrl = `https://sokala.xyz/webp/${icon.filename}`;
 
   return (
-    <div className="absolute inset-1 flex items-center justify-center">
+    <div className="absolute inset-1 flex items-center justify-center overflow-hidden">
       <img
         draggable={false}
         src={imageUrl}
-        alt={`Icon ${gridIndex}`}
-        className={`transform transition-transform duration-500 ease-out ${!isMoving ? 'cursor-pointer hover:scale-110' : ''} ${hasAnimated ? 'scale-100' : 'scale-0'}`} // Use state to control scale, increased duration
+        alt={icon.description} // Use icon description for alt text
+        className={`transform transition-all duration-1000 ease-out ${!isMoving ? 'cursor-pointer hover:scale-110' : ''}`}
+        style={{
+          opacity: imageLoaded ? 1 : 0, // Fade in
+          transform: `scale(${imageLoaded ? 1 : 0.8})`, // Scale in
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+        }}
         onClick={() => {
-          if (!isMoving) { // Only trigger onClick if not moving
+          if (!isMoving) {
             onIconClick(gridIndex);
           }
         }}
-        onLoad={() => {
-          if (!hasAnimated) { // Only trigger animation if not already animated
-            setHasAnimated(true);
-          }
-        }}
+        onLoad={() => setImageLoaded(true)}
+        loading="lazy"
       />
     </div>
   );
@@ -52,7 +55,10 @@ export const ThiingsIcons = ({ icons, onIconClick }: ThiingsIconsProps) => { // 
   return (
     <ThiingsGrid
       gridSize={160}
-      renderItem={(config) => <ThiingsIconCell {...config} icons={icons} onIconClick={onIconClick} />} // Use props
+      renderItem={(config) => {
+        const icon = icons[config.gridIndex % icons.length];
+        return <ThiingsIconCell {...config} icon={icon} onIconClick={onIconClick} />;
+      }}
       initialPosition={{ x: 0, y: 0 }}
     />
   );
