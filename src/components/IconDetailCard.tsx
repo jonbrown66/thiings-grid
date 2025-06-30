@@ -29,6 +29,13 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    // Only close if the click is directly on the overlay, not on the card content
+    if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+      onClose();
+    }
+  };
+
   const handleDownloadCard = async () => {
     if (!cardRef.current) return;
 
@@ -60,18 +67,20 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
       const imgElement = clone.querySelector('img');
       if (imgElement) {
         try {
-          // 关键步骤：为图片设置 crossOrigin 属性
+          // 确保 crossOrigin 属性在设置 src 之前被设置
           imgElement.crossOrigin = 'anonymous';
-
           // 使用 downloadImageUrl 来确保获取的是最高质量的图片
           // 并且给它一个时间戳来防止浏览器缓存问题
           imgElement.src = `${downloadImageUrl}?t=${new Date().getTime()}`;
+
+          // 等待图片加载完成
           if (imgElement && !imgElement.complete) {
-            await new Promise<void>((res, rej) => {
+            await new Promise<void>((res) => {
               imgElement.onload = () => res();
               imgElement.onerror = (e) => {
                 console.error("Image failed to load for html2canvas:", e);
-                rej(new Error("Image load failed"));
+                // 即使图片加载失败，也调用 resolve 以避免 Promise 挂起
+                res(); 
               };
             });
           }
@@ -122,6 +131,7 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
       className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300 ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
+      onClick={handleOverlayClick} // Add click handler to overlay
     >
       <div
         ref={cardRef}
@@ -132,7 +142,7 @@ const IconDetailCard: React.FC<IconDetailCardProps> = ({
       >
         {/* Close Button */}
         <button
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 w-12 h-12 flex items-center justify-center" // Make button square and center content
           onClick={onClose}
         >
           &times;

@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from "react";
 
 // Grid physics constants
 const MIN_VELOCITY = 0.2;
@@ -32,49 +32,6 @@ function debounce<T extends (...args: unknown[]) => unknown>(
   return debouncedFn;
 }
 
-// Custom throttle implementation
-function throttle<T extends (...args: unknown[]) => unknown>(
-  func: T,
-  limit: number,
-  options: { leading?: boolean; trailing?: boolean } = {}
-) {
-  let lastCall = 0;
-  let timeoutId: number | undefined = undefined;
-  const { leading = true, trailing = true } = options;
-
-  const throttledFn = function (...args: Parameters<T>) {
-    const now = Date.now();
-
-    if (!lastCall && !leading) {
-      lastCall = now;
-    }
-
-    const remaining = limit - (now - lastCall);
-
-    if (remaining <= 0 || remaining > limit) {
-      clearTimeout(timeoutId);
-      timeoutId = undefined;
-      lastCall = now;
-      func(...args);
-    } else if (!timeoutId && trailing) {
-      timeoutId = setTimeout(() => {
-        lastCall = leading ? Date.now() : 0;
-        timeoutId = undefined;
-        func(...args);
-      }, remaining);
-    }
-  };
-
-  throttledFn.cancel = function () {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = undefined;
-    }
-  };
-
-  return throttledFn;
-}
-
 function getDistance(p1: Position, p2: Position) {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
@@ -91,18 +48,7 @@ type GridItem = {
   gridIndex: number;
 };
 
-type State = {
-  offset: Position;
-  isDragging: boolean;
-  startPos: Position;
-  restPos: Position;
-  velocity: Position;
-  isMoving: boolean;
-  lastMoveTime: number;
-  velocityHistory: Position[];
-  renderedItems: Map<string, GridItem>; // Map to store currently rendered items for reuse
-  dragStartPos: Position; // Add dragStartPos to track where drag started
-};
+// Remove State type as it will be replaced by useState
 
 export type ItemConfig = {
   isMoving: boolean;
@@ -117,111 +63,37 @@ export type ThiingsGridProps = {
   initialPosition?: Position;
 };
 
-class ThiingsGrid extends Component<ThiingsGridProps, State> {
-  private containerRef: React.RefObject<HTMLElement | null>;
-  private lastPos: Position;
-  private animationFrame: number | null;
-  private isComponentMounted: boolean;
-  private lastUpdateTime: number;
-  private debouncedUpdateGridItems: ReturnType<typeof throttle>;
+const ThiingsGrid = React.forwardRef<
+  { publicGetCurrentPosition: () => Position },
+  ThiingsGridProps
+>(({ gridSize, renderItem, className, initialPosition }, ref) => {
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  constructor(props: ThiingsGridProps) {
-    super(props);
-    const offset = this.props.initialPosition || { x: 0, y: 0 };
-    this.state = {
-      offset: { ...offset },
-      restPos: { ...offset },
-      startPos: { ...offset },
-      velocity: { x: 0, y: 0 },
-      isDragging: false,
-      isMoving: false,
-      lastMoveTime: 0,
-      velocityHistory: [],
-      renderedItems: new Map(), // Initialize renderedItems
-      dragStartPos: { x: 0, y: 0 }, // Initialize dragStartPos
-    };
-    this.containerRef = React.createRef();
-    this.lastPos = { x: 0, y: 0 };
-    this.animationFrame = null;
-    this.isComponentMounted = false;
-    this.lastUpdateTime = 0;
-    this.debouncedUpdateGridItems = throttle(
-      this.updateGridItems,
-      UPDATE_INTERVAL,
-      {
-        leading: true,
-        trailing: true,
-      }
-    );
-  }
+  const [offset, setOffset] = useState<Position>(initialPosition || { x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [startPos, setStartPos] = useState<Position>(initialPosition || { x: 0, y: 0 });
+  const [restPos, setRestPos] = useState<Position>(initialPosition || { x: 0, y: 0 });
+  const [velocity, setVelocity] = useState<Position>({ x: 0, y: 0 });
+  const [isMoving, setIsMoving] = useState<boolean>(false);
+  const lastMoveTime = useRef<number>(0);
+  const velocityHistory = useRef<Position[]>([]);
+  const [renderedItems, setRenderedItems] = useState<Map<string, GridItem>>(new Map());
+  const dragStartPos = useRef<Position>({ x: 0, y: 0 });
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [containerHeight, setContainerHeight] = useState<number>(0);
 
-  componentDidMount() {
-    this.isComponentMounted = true;
-    this.updateGridItems();
+  const lastPos = useRef<Position>({ x: 0, y: 0 });
+  const animationFrame = useRef<number | null>(null);
+  const isComponentMounted = useRef<boolean>(false);
+  const lastUpdateTime = useRef<number>(0);
+  const resizeObserver = useRef<ResizeObserver | null>(null);
 
-    // Add non-passive event listener
-    if (this.containerRef.current) {
-      this.containerRef.current.addEventListener("wheel", this.handleWheel, {
-        passive: false,
-      });
-      this.containerRef.current.addEventListener(
-        "touchmove",
-        this.handleTouchMove,
-        { passive: false }
-      );
-    }
-  }
+  // Expose public method via ref
+  useImperativeHandle(ref, () => ({
+    publicGetCurrentPosition: () => offset,
+  }));
 
-  componentWillUnmount() {
-    this.isComponentMounted = false;
-    if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
-    }
-    this.debouncedUpdateGridItems.cancel();
-
-    // Remove event listeners
-    if (this.containerRef.current) {
-      this.containerRef.current.removeEventListener("wheel", this.handleWheel);
-      this.containerRef.current.removeEventListener(
-        "touchmove",
-        this.handleTouchMove
-      );
-    }
-  }
-
-  public publicGetCurrentPosition = () => {
-    return this.state.offset;
-  };
-
-  private calculateVisiblePositions = (): Position[] => {
-    if (!this.containerRef.current) return [];
-
-    const rect = this.containerRef.current.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-
-    // Calculate grid cells needed to fill container
-    const cellsX = Math.ceil(width / this.props.gridSize);
-    const cellsY = Math.ceil(height / this.props.gridSize);
-
-    // Calculate center position based on offset
-    const centerX = -Math.round(this.state.offset.x / this.props.gridSize);
-    const centerY = -Math.round(this.state.offset.y / this.props.gridSize);
-
-    const positions: Position[] = [];
-    const halfCellsX = Math.ceil(cellsX / 2);
-    const halfCellsY = Math.ceil(cellsY / 2);
-
-    for (let y = centerY - halfCellsY; y <= centerY + halfCellsY; y++) {
-      for (let x = centerX - halfCellsX; x <= centerX + halfCellsX; x++) {
-        positions.push({ x, y });
-      }
-    }
-
-    return positions;
-  };
-
-  private getItemIndexForPosition = (x: number, y: number): number => {
+  const getItemIndexForPosition = useCallback((x: number, y: number): number => {
     // Special case for center
     if (x === 0 && y === 0) return 0;
 
@@ -256,300 +128,371 @@ class ThiingsGrid extends Component<ThiingsGridProps, State> {
 
     const index = innerLayersSize + positionInLayer;
     return index;
-  };
+  }, []);
 
-  private debouncedStopMoving = debounce(() => {
-    this.setState({ isMoving: false, restPos: { ...this.state.offset } });
-  }, 200);
+  const calculateVisiblePositions = useCallback((): Position[] => {
+    if (containerWidth === 0 || containerHeight === 0) return [];
 
-  private updateGridItems = () => {
-    if (!this.isComponentMounted) return;
+    const width = containerWidth;
+    const height = containerHeight;
 
-    const positions = this.calculateVisiblePositions();
+    // Calculate grid cells needed to fill container
+    const cellsX = Math.ceil(width / gridSize);
+    const cellsY = Math.ceil(height / gridSize);
+
+    // Calculate center position based on offset
+    const centerX = -Math.round(offset.x / gridSize);
+    const centerY = -Math.round(offset.y / gridSize);
+
+    const positions: Position[] = [];
+    const halfCellsX = Math.ceil(cellsX / 2);
+    const halfCellsY = Math.ceil(cellsY / 2);
+
+    for (let y = centerY - halfCellsY; y <= centerY + halfCellsY; y++) {
+      for (let x = centerX - halfCellsX; x <= centerX + halfCellsX; x++) {
+        positions.push({ x, y });
+      }
+    }
+
+    return positions;
+  }, [containerWidth, containerHeight, gridSize, offset]);
+
+  const debouncedStopMoving = useMemo(() => debounce(() => {
+    setIsMoving(false);
+    setRestPos((prevRestPos) => {
+      // Only update restPos if it's different from current offset to avoid unnecessary re-renders
+      if (prevRestPos.x !== offset.x || prevRestPos.y !== offset.y) {
+        return { ...offset };
+      }
+      return prevRestPos;
+    });
+  }, 200), [offset]);
+
+  const updateGridItems = useCallback(() => {
+    if (!isComponentMounted.current) return;
+
+    const positions = calculateVisiblePositions();
     const newVisibleItems = new Map<string, GridItem>();
-    const currentRenderedItems = new Map(this.state.renderedItems); // Create a mutable copy
+    const currentRenderedItems = renderedItems; // Use the current state directly
+
+    let hasChanges = false;
 
     positions.forEach((position) => {
       const key = `${position.x}-${position.y}`;
       let item = currentRenderedItems.get(key);
 
       if (item) {
-        // Item already exists, reuse it
         newVisibleItems.set(key, item);
-        currentRenderedItems.delete(key); // Mark as processed
       } else {
-        // New item, create it
-        const gridIndex = this.getItemIndexForPosition(position.x, position.y);
+        const gridIndex = getItemIndexForPosition(position.x, position.y);
         newVisibleItems.set(key, { position, gridIndex });
+        hasChanges = true; // New item added
       }
     });
 
-    // Any remaining items in currentRenderedItems are no longer visible, remove them
-    // (No explicit removal needed from the Map, as we're setting a new Map)
+    // Check for removed items
+    if (newVisibleItems.size !== currentRenderedItems.size) {
+      hasChanges = true;
+    } else {
+      // Check if any existing item was removed (only if sizes are the same)
+      for (const key of currentRenderedItems.keys()) {
+        if (!newVisibleItems.has(key)) {
+          hasChanges = true;
+          break;
+        }
+      }
+    }
 
-    const distanceFromRest = getDistance(this.state.offset, this.state.restPos);
+    if (hasChanges) {
+      setRenderedItems(newVisibleItems);
+    }
 
-    this.setState({
-      renderedItems: newVisibleItems, // Update with new visible items
-      isMoving: distanceFromRest > 5
-    });
+    const distanceFromRest = getDistance(offset, restPos);
+    if (isMoving !== (distanceFromRest > 5)) {
+      setIsMoving(distanceFromRest > 5);
+    }
 
-    this.debouncedStopMoving();
-  };
+    debouncedStopMoving();
+  }, [calculateVisiblePositions, debouncedStopMoving, getItemIndexForPosition, offset, renderedItems, restPos, isMoving]);
 
-  private animate = () => {
-    if (!this.isComponentMounted) return;
+  const animate = useCallback(() => {
+    if (!isComponentMounted.current) return;
 
     const currentTime = performance.now();
-    const deltaTime = currentTime - this.lastUpdateTime;
+    const deltaTime = currentTime - lastUpdateTime.current;
 
     if (deltaTime >= UPDATE_INTERVAL) {
-      const { velocity } = this.state;
+      const currentVelocity = velocity;
       const speed = Math.sqrt(
-        velocity.x * velocity.x + velocity.y * velocity.y
+        currentVelocity.x * currentVelocity.x + currentVelocity.y * currentVelocity.y
       );
 
       if (speed < MIN_VELOCITY) {
-        this.setState({ velocity: { x: 0, y: 0 } });
+        setVelocity({ x: 0, y: 0 });
+        animationFrame.current = null;
         return;
       }
 
-      // Apply non-linear deceleration based on speed
       let deceleration = FRICTION;
       if (speed < VELOCITY_THRESHOLD) {
-        // Apply stronger deceleration at lower speeds for more natural stopping
         deceleration = FRICTION * (speed / VELOCITY_THRESHOLD);
       }
 
-      this.setState(
-        (prevState) => ({
-          offset: {
-            x: prevState.offset.x + prevState.velocity.x,
-            y: prevState.offset.y + prevState.velocity.y,
-          },
-          velocity: {
-            x: prevState.velocity.x * deceleration,
-            y: prevState.velocity.y * deceleration,
-          },
-        }),
-        this.debouncedUpdateGridItems
-      );
+      setOffset((prevOffset) => ({
+        x: prevOffset.x + currentVelocity.x,
+        y: prevOffset.y + currentVelocity.y,
+      }));
+      setVelocity((prevVelocity) => ({
+        x: prevVelocity.x * deceleration,
+        y: prevVelocity.y * deceleration,
+      }));
 
-      this.lastUpdateTime = currentTime;
+      lastUpdateTime.current = currentTime;
+      // updateGridItems is called here, but it depends on offset and velocity which are updated via setState.
+      // This might cause a stale closure issue if updateGridItems is not re-created when offset/velocity change.
+      // However, updateGridItems itself depends on offset, so it will be re-created.
+      // The key is that updateGridItems should use the LATEST state values.
+      // React guarantees that state updates are batched, so calling updateGridItems immediately after setState
+      // might not see the very latest state in the same render cycle.
+      // For animation, it's often better to pass the latest state values directly or use functional updates.
+      // Let's keep it as is for now, as updateGridItems is useCallback and depends on offset.
+      updateGridItems();
     }
 
-    this.animationFrame = requestAnimationFrame(this.animate);
-  };
+    animationFrame.current = requestAnimationFrame(animate);
+  }, [updateGridItems, velocity]); // Added velocity to dependencies
 
-  private handleDown = (p: Position) => {
-    if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
+  const handleDown = useCallback((p: Position) => {
+    if (animationFrame.current) {
+      cancelAnimationFrame(animationFrame.current);
     }
 
-    this.setState({
-      isDragging: true,
-      startPos: {
-        x: p.x - this.state.offset.x,
-        y: p.y - this.state.offset.y,
-      },
-      velocity: { x: 0, y: 0 },
-      dragStartPos: { x: p.x, y: p.y }, // Record drag start position
+    setIsDragging(true);
+    setStartPos({
+      x: p.x - offset.x,
+      y: p.y - offset.y,
     });
+    setVelocity({ x: 0, y: 0 });
+    dragStartPos.current = { x: p.x, y: p.y };
 
-    this.lastPos = { x: p.x, y: p.y };
-  };
-  private handleMove = (p: Position) => {
-    if (!this.state.isDragging) return;
+    lastPos.current = { x: p.x, y: p.y };
+  }, [offset]); // offset is a dependency
+
+  const handleMove = useCallback((p: Position) => {
+    if (!isDragging) return; // Check isDragging directly
 
     const currentTime = performance.now();
-    const timeDelta = currentTime - this.state.lastMoveTime;
+    const timeDelta = currentTime - lastMoveTime.current;
 
-    // Calculate raw velocity based on position and time
     const rawVelocity = {
-      x: (p.x - this.lastPos.x) / (timeDelta || 1),
-      y: (p.y - this.lastPos.y) / (timeDelta || 1),
+      x: (p.x - lastPos.current.x) / (timeDelta || 1),
+      y: (p.y - lastPos.current.y) / (timeDelta || 1),
     };
 
-    // Add to velocity history and maintain fixed size
-    const velocityHistory = [...this.state.velocityHistory, rawVelocity];
-    if (velocityHistory.length > VELOCITY_HISTORY_SIZE) {
-      velocityHistory.shift();
+    const history = [...velocityHistory.current, rawVelocity];
+    if (history.length > VELOCITY_HISTORY_SIZE) {
+      history.shift();
     }
+    velocityHistory.current = history;
 
-    // Calculate smoothed velocity using moving average
-    const smoothedVelocity = velocityHistory.reduce(
+    const smoothedVelocity = history.reduce(
       (acc, vel) => ({
-        x: acc.x + vel.x / velocityHistory.length,
-        y: acc.y + vel.y / velocityHistory.length,
+        x: acc.x + vel.x / history.length,
+        y: acc.y + vel.y / history.length,
       }),
       { x: 0, y: 0 }
     );
 
-    this.setState(
-      {
-        velocity: smoothedVelocity,
-        offset: {
-          x: p.x - this.state.startPos.x,
-          y: p.y - this.state.startPos.y,
-        },
-        lastMoveTime: currentTime,
-        velocityHistory,
-      },
-      this.updateGridItems
-    );
+    setVelocity(smoothedVelocity);
+    setOffset({
+      x: p.x - startPos.x,
+      y: p.y - startPos.y,
+    });
+    lastMoveTime.current = currentTime;
 
-    this.lastPos = { x: p.x, y: p.y };
-  };
-  private handleUp = () => {
+    updateGridItems();
+    lastPos.current = { x: p.x, y: p.y };
+  }, [isDragging, startPos, updateGridItems]); // Added isDragging to dependencies
+
+  const handleUp = useCallback(() => {
     const dragThreshold = 5; // pixels
-    const dragDistance = getDistance(this.state.dragStartPos, this.lastPos);
+    const dragDistance = getDistance(dragStartPos.current, lastPos.current);
 
-    this.setState({ isDragging: false });
+    setIsDragging(false);
 
     if (dragDistance < dragThreshold) {
-      // This was a click, not a drag
-      // Ensure isMoving is false immediately for clicks
-      this.setState({ isMoving: false });
+      setIsMoving(false);
     } else {
-      // This was a drag, start animation
-      this.animationFrame = requestAnimationFrame(this.animate);
+      animationFrame.current = requestAnimationFrame(animate);
     }
-  };
+  }, [animate]); // animate is a dependency
 
-  private handleMouseDown = (e: React.MouseEvent) => {
-    this.handleDown({
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    handleDown({
       x: e.clientX,
       y: e.clientY,
     });
-  };
+  }, [handleDown]); // handleDown is a dependency
 
-  private handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    this.handleMove({
+    handleMove({
       x: e.clientX,
       y: e.clientY,
     });
-  };
+  }, [handleMove]); // handleMove is a dependency
 
-  private handleMouseUp = () => {
-    this.handleUp();
-  };
+  const handleMouseUp = useCallback(() => {
+    handleUp();
+  }, [handleUp]); // handleUp is a dependency
 
-  private handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
-
     if (!touch) return;
-
-    this.handleDown({
+    handleDown({
       x: touch.clientX,
       y: touch.clientY,
     });
-  };
+  }, [handleDown]); // handleDown is a dependency
 
-  private handleTouchMove = (e: TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     const touch = e.touches[0];
-
     if (!touch) return;
-
     e.preventDefault();
-    this.handleMove({
+    handleMove({
       x: touch.clientX,
       y: touch.clientY,
     });
-  };
+  }, [handleMove]); // handleMove is a dependency
 
-  private handleTouchEnd = () => {
-    this.handleUp();
-  };
+  const handleTouchEnd = useCallback(() => {
+    handleUp();
+  }, [handleUp]); // handleUp is a dependency
 
-  private handleWheel = (e: WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-
-    // Get the scroll deltas
     const deltaX = e.deltaX;
     const deltaY = e.deltaY;
 
-    this.setState(
-      (prevState) => ({
-        offset: {
-          x: prevState.offset.x - deltaX,
-          y: prevState.offset.y - deltaY,
-        },
-        velocity: { x: 0, y: 0 }, // Reset velocity when scrolling
-      }),
-      this.debouncedUpdateGridItems
-    );
-  };
+    setOffset((prevOffset) => ({
+      x: prevOffset.x - deltaX,
+      y: prevOffset.y - deltaY,
+    }));
+    setVelocity({ x: 0, y: 0 });
+    updateGridItems();
+  }, [updateGridItems]); // updateGridItems is a dependency
 
-  render() {
-    const { offset, isDragging, renderedItems, isMoving } = this.state;
-    const { gridSize, className } = this.props;
+  useEffect(() => {
+    isComponentMounted.current = true;
+    const currentContainerRef = containerRef.current;
 
-    // Get container dimensions
-    const containerRect = this.containerRef.current?.getBoundingClientRect();
-    const containerWidth = containerRect?.width || 0;
-    const containerHeight = containerRect?.height || 0;
+    const updateDimensions = () => {
+      if (currentContainerRef) {
+        const rect = currentContainerRef.getBoundingClientRect();
+        setContainerWidth(rect.width);
+        setContainerHeight(rect.height);
+      }
+    };
 
-    return (
+    updateDimensions();
+    updateGridItems(); // Initial update of grid items
+
+    if (currentContainerRef) {
+      currentContainerRef.addEventListener("wheel", handleWheel, { passive: false });
+      currentContainerRef.addEventListener("touchmove", handleTouchMove, { passive: false });
+
+      resizeObserver.current = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          if (entry.target === currentContainerRef) {
+            setContainerWidth(entry.contentRect.width);
+            setContainerHeight(entry.contentRect.height);
+            updateGridItems(); // Recalculate visible items on resize
+          }
+        }
+      });
+      resizeObserver.current.observe(currentContainerRef);
+    }
+
+    return () => {
+      isComponentMounted.current = false;
+      if (animationFrame.current) {
+        cancelAnimationFrame(animationFrame.current);
+      }
+      debouncedStopMoving.cancel();
+
+      if (currentContainerRef) {
+        currentContainerRef.removeEventListener("wheel", handleWheel);
+        currentContainerRef.removeEventListener("touchmove", handleTouchMove);
+      }
+      if (resizeObserver.current) {
+        resizeObserver.current.disconnect();
+      }
+    };
+  }, [handleWheel, handleTouchMove, updateGridItems, debouncedStopMoving]);
+
+  const memoizedRenderedItems = useMemo(() => {
+    return Array.from(renderedItems.values());
+  }, [renderedItems]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={{
+        position: "absolute",
+        inset: 0,
+        touchAction: "none",
+        overflow: "hidden",
+        cursor: isDragging ? "grabbing" : "grab",
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       <div
-        ref={this.containerRef as React.RefObject<HTMLDivElement>}
-        className={className}
         style={{
           position: "absolute",
           inset: 0,
-          touchAction: "none",
-          overflow: "hidden",
-          cursor: isDragging ? "grabbing" : "grab",
+          transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
+          willChange: "transform",
         }}
-        onMouseDown={this.handleMouseDown}
-        onMouseMove={this.handleMouseMove}
-        onMouseUp={this.handleMouseUp}
-        onMouseLeave={this.handleMouseUp}
-        onTouchStart={this.handleTouchStart}
-        onTouchEnd={this.handleTouchEnd}
-        onTouchCancel={this.handleTouchEnd}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
-            willChange: "transform",
-          }}
-        >
-          {Array.from(renderedItems.values()).map((item) => { // Iterate over values of the Map
-            const x = item.position.x * gridSize + containerWidth / 2;
-            const y = item.position.y * gridSize + containerHeight / 2;
+        {memoizedRenderedItems.map((item) => {
+          const x = item.position.x * gridSize + containerWidth / 2;
+          const y = item.position.y * gridSize + containerHeight / 2;
 
-            return (
-              <div
-                key={`${item.position.x}-${item.position.y}`} // Use a stable key
-                style={{
-                  position: "absolute",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  userSelect: "none",
-                  width: gridSize,
-                  height: gridSize,
-                  transform: `translate3d(${x}px, ${y}px, 0)`,
-                  marginLeft: `-${gridSize / 2}px`,
-                  marginTop: `-${gridSize / 2}px`,
-                  willChange: "transform",
-                }}
-              >
-                {this.props.renderItem({
-                  gridIndex: item.gridIndex,
-                  position: item.position,
-                  isMoving,
-                })}
-              </div>
-            );
-          })}
-        </div>
+          return (
+            <div
+              key={`${item.position.x}-${item.position.y}`}
+              style={{
+                position: "absolute",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                userSelect: "none",
+                width: gridSize,
+                height: gridSize,
+                transform: `translate3d(${x}px, ${y}px, 0)`,
+                marginLeft: `-${gridSize / 2}px`,
+                marginTop: `-${gridSize / 2}px`,
+                willChange: "transform",
+              }}
+            >
+              {renderItem({
+                gridIndex: item.gridIndex,
+                position: item.position,
+                isMoving,
+              })}
+            </div>
+          );
+        })}
       </div>
-    );
-  }
-}
+    </div>
+  );
+});
 
 export default ThiingsGrid;

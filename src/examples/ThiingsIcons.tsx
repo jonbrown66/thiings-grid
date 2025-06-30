@@ -54,7 +54,7 @@ export const ThiingsIcons = ({ icons, onIconClick }: ThiingsIconsProps) => { // 
 
   return (
     <ThiingsGrid
-      gridSize={160}
+      gridSize={200}
       renderItem={(config) => {
         const icon = icons[config.gridIndex % icons.length];
         return <ThiingsIconCell {...config} icon={icon} onIconClick={onIconClick} />;

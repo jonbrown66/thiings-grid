@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Toaster } from "react-hot-toast";
 import { ThiingsIcons } from "./examples/ThiingsIcons";
 import IconDetailCard from "./components/IconDetailCard";
@@ -17,28 +17,30 @@ function App() {
     });
   }, []);
 
-  const handleIconClick = (index: number) => {
+  const handleIconClick = useCallback((index: number) => {
     setSelectedIconIndex(index);
-  };
+  }, []);
 
-  const handleCloseCard = () => {
+  const handleCloseCard = useCallback(() => {
     setSelectedIconIndex(null);
-  };
+  }, []);
 
   const filteredIconData = useMemo(() => {
     if (!searchQuery) {
       return iconData;
     }
+    const lowerCaseSearchQuery = searchQuery.toLowerCase();
     return iconData.filter((icon: IconData) =>
-      icon.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      icon.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (icon.tag1 && icon.tag1.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (icon.tag2 && icon.tag2.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (icon.tag3 && icon.tag3.toLowerCase().includes(searchQuery.toLowerCase()))
+      icon.description.toLowerCase().includes(lowerCaseSearchQuery) ||
+      icon.title.toLowerCase().includes(lowerCaseSearchQuery) ||
+      icon.filename.toLowerCase().includes(lowerCaseSearchQuery) || // Add filename search
+      (icon.tag1 && icon.tag1.toLowerCase().includes(lowerCaseSearchQuery)) ||
+      (icon.tag2 && icon.tag2.toLowerCase().includes(lowerCaseSearchQuery)) ||
+      (icon.tag3 && icon.tag3.toLowerCase().includes(lowerCaseSearchQuery))
     );
   }, [searchQuery, iconData]);
 
-  const getIconDetails = (index: number) => {
+  const getIconDetails = useCallback((index: number) => {
     const icon: IconData = filteredIconData[index % filteredIconData.length];
     const displayImageUrl = `https://pub-3eaacd7f361f489abc8c1264f34670cd.r2.dev/webp/${icon.filename}`; // For displaying webp
     const downloadImageUrl = `https://pub-3eaacd7f361f489abc8c1264f34670cd.r2.dev/${icon.filename.replace('.webp', '.png')}`; // For downloading png
@@ -47,7 +49,7 @@ function App() {
     // Combine all tags into a single string for display if needed, or handle them separately
     const tag = [icon.tag1, icon.tag2, icon.tag3].filter(Boolean).join(', ');
     return { imageUrl: displayImageUrl, downloadImageUrl, description, title, tag };
-  };
+  }, [filteredIconData]); // Dependency on filteredIconData
 
   const iconDetails = selectedIconIndex !== null ? getIconDetails(selectedIconIndex) : null;
 

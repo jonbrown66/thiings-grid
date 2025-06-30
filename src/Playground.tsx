@@ -1,3 +1,4 @@
+import React from "react"; // Import React
 import SimpleNumbersExample from "./examples/SimpleNumbers";
 import ColorfulGridExample from "./examples/ColorfulGrid";
 import EmojiFunExample from "./examples/EmojiFun";
@@ -30,7 +31,7 @@ type PlaygroundProps = {
   currentExample: number;
 };
 
-const Playground = ({ currentExample }: PlaygroundProps) => {
+const Playground = React.memo(({ currentExample }: PlaygroundProps) => {
   const ExampleComponent = exampleComponents[currentExample];
 
   return (
@@ -38,6 +39,6 @@ const Playground = ({ currentExample }: PlaygroundProps) => {
       <ExampleComponent />
     </div>
   );
-};
+});
 
 export default Playground;
